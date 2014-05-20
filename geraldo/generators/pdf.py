@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 import datetime, os
 from base import ReportGenerator
 

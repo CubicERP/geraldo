@@ -15,6 +15,7 @@ class Widget(Element):
     """A widget is a value representation on the report"""
     _height = 0 #0.5*cm
     _width = 5*cm
+    _line_number = 0
     style = {}
     truncate_overflow = False
     
@@ -244,8 +245,36 @@ class ObjectValue(Label):
                     self._cached_text = unicode(self.get_text(self.instance, value))
             else:
                 self._cached_text = unicode(value)
-            
-        return self.display_format % self._cached_text
+        res = self._cached_text
+        if '{' in self.display_format:
+            if 'f' in self.display_format:
+                try:
+                    res = self.display_format.format(float(self._cached_text or 0.0))
+                except ValueError:
+                    pass
+            elif 'd' in self.display_format or 'x' in self.display_format or 'o' in self.display_format or 'b' in self.display_format:
+                try:
+                    res = self.display_format.format(int(self._cached_text or 0.0))
+                except ValueError:
+                    pass
+            else:
+                try:
+                    res = self.display_format.format(self._cached_text)
+                except ValueError:
+                    pass
+        elif self.display_format.find('f') > 0:
+            try:
+                res = self.display_format % float(self._cached_text or 0.0)
+            except ValueError:
+                pass
+        elif self.display_format.find('d') > 0:
+            try:
+                res = self.display_format % int(self._cached_text or 0)
+            except ValueError:
+                pass
+        else:
+            res = self.display_format % self._cached_text
+        return res
 
     def _set_text(self, value):
         self._cached_text = value

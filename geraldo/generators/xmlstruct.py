@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 # TODO
 
 from base import ReportGenerator

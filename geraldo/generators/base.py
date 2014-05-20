@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 import random, shelve, os
 from decimal import Decimal
 
@@ -191,7 +192,7 @@ class ReportGenerator(GeraldoObject):
         return widget_rect
 
     def render_element(self, element, current_object, band, band_rect, temp_top,
-            top_position):
+            top_position, line_number=0):
         # Doesn't render not visible element
         if not element.visible:
             return
@@ -209,6 +210,7 @@ class ReportGenerator(GeraldoObject):
             widget.report = self.report # This should be done by a metaclass in Band domain TODO
             widget.band = band # This should be done by a metaclass in Band domain TODO
             widget.page = self._rendered_pages[-1]
+            widget._line_number = line_number
 
             # Border rect
             widget_rect = self.make_widget_rect(widget, band_rect)
@@ -323,7 +325,7 @@ class ReportGenerator(GeraldoObject):
 
 
     def render_band(self, band, top_position=None, left_position=None,
-            update_top=True, current_object=None):
+            update_top=True, current_object=None, line_number=0):
         """Generate a band having the current top position or informed as its
         top coordinate"""
 
@@ -370,7 +372,7 @@ class ReportGenerator(GeraldoObject):
         # Loop at band widgets
         for element in band.elements:
             self.render_element(element, current_object, band, band_rect, temp_top,
-                    top_position)
+                    top_position, line_number=line_number)
 
         # Updates top position
         if update_top:
@@ -382,7 +384,7 @@ class ReportGenerator(GeraldoObject):
             band_height += self.calculate_size(getattr(band, 'margin_top', 0))
             band_height += self.calculate_size(getattr(band, 'margin_bottom', 0))
 
-            self.update_top_pos(band_height)
+            self.update_top_pos(band_height,set_position=getattr(band,'top_position',None))
 
         # Updates left position
         if getattr(band, 'display_inline', False):
@@ -399,7 +401,7 @@ class ReportGenerator(GeraldoObject):
             self.in_tests = True # XXX
             self.force_blank_page_by_height(self.calculate_size(child_band.height))
 
-            self.render_band(child_band)
+            self.render_band(child_band,current_object=current_object, line_number=line_number)
 
         # Calls the before_print event
         band.do_after_print(generator=self)
@@ -596,7 +598,8 @@ class ReportGenerator(GeraldoObject):
                 if done != False:
                     if self.get_available_height() < self.calculate_size(d_band.height):
                         # right margin is not considered to calculate the necessary space
-                        d_width = self.calculate_size(d_band.width) + self.calculate_size(getattr(d_band, 'margin_left', 0))
+                        #d_width = self.calculate_size(d_band.width) + self.calculate_size(getattr(d_band, 'margin_left', 0))
+                        d_width = self.calculate_size(d_band.width) and self.calculate_size(d_band.width) or 0  + self.calculate_size(getattr(d_band, 'margin_left', 0)) and self.calculate_size(getattr(d_band, 'margin_left', 0)) or 0
 
                         # ... and this is not an inline displayed detail band or there is no width available
                         if not getattr(d_band, 'display_inline', False) or self.get_available_width() < d_width:
@@ -858,7 +861,7 @@ class ReportGenerator(GeraldoObject):
 
                 # Renders the detail band
                 if subreport.band_detail.visible:
-                    self.render_band(subreport.band_detail, current_object=obj)
+                    self.render_band(subreport.band_detail, current_object=obj, line_number=num)
 
             # Renders the footer band
             if subreport.band_footer:

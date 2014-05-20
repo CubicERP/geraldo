@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 import datetime
 from base import ReportGenerator
 
@@ -12,6 +13,7 @@ from geraldo.exceptions import AbortEvent
 
 DEFAULT_ROW_HEIGHT = 0.65*cm
 DEFAULT_CHAR_WIDTH = 0.261*cm
+DEFAULT_WRAP_ON = True
 
 # Default is Epson ESC/P2 standard
 DEFAULT_ESCAPE_SET = {
@@ -65,7 +67,9 @@ class TextGenerator(ReportGenerator):
     """
     row_height = DEFAULT_ROW_HEIGHT
     character_width = DEFAULT_CHAR_WIDTH
-    _to_printer = True
+    wrap_on = DEFAULT_WRAP_ON
+    wrap_lines = None #Page, Band, Line, lines added
+    _to_printer = False
     _escape_set = DEFAULT_ESCAPE_SET
     encode_to = None
     manual_escape_codes = False
@@ -79,7 +83,7 @@ class TextGenerator(ReportGenerator):
 
     def __init__(self, report, cache_enabled=None, **kwargs):
         super(TextGenerator, self).__init__(report, **kwargs)
-
+        self.wrap_lines = {}
         # Cache enabled
         if cache_enabled is not None:
             self.cache_enabled = cache_enabled
@@ -121,7 +125,7 @@ class TextGenerator(ReportGenerator):
         # Saves to file or just returns the text
         if hasattr(self, 'filename'):
             fp = file(self.filename, 'w')
-            fp.write(text)
+            fp.write(text.encode('UTF-8'))
             fp.close()
         else:
             return text
@@ -167,8 +171,9 @@ class TextGenerator(ReportGenerator):
         return dict(name=datetime.datetime.now().strftime('%H%m%s'), **d_style)
 
     def keep_in_frame(self, widget, width, height, paragraphs, mode):
-        # Doesn't nothing for a while: TODO
-        pass
+        for p in paragraphs:
+            p.height = height
+            p.width = width
 
     # METHODS THAT ARE TOTALLY SPECIFIC TO THIS GENERATOR AND MUST
     # OVERRIDE THE SUPERCLASS EQUIVALENT ONES
@@ -226,9 +231,23 @@ class TextGenerator(ReportGenerator):
             text = text.center(int(self.calculate_size(widget.width) / self.character_width))
         elif widget.style.get('alignment', None) == TA_RIGHT:
             text = text.rjust(int(self.calculate_size(widget.width) / self.character_width))
-
-        self.print_in_page_output(page_output, text, widget.rect)
-
+            
+        if not self.wrap_lines.has_key(page_number):
+            self.wrap_lines[page_number] = {}
+        top = int(round(self.calculate_size(widget.rect['top']) / self.row_height))
+        wrap_lines = 0
+        line = 0
+        while widget._line_number > line:
+            line += 1
+            back = 0
+            while not self.wrap_lines[page_number].has_key(top - line - back) and back < 3:
+                back += 1
+            wrap_line = self.wrap_lines[page_number].get(top - line - back,0) - back
+            wrap_lines += (wrap_line < 0) and 0 or wrap_line
+            
+        wrap_widget = self.print_in_page_output(page_output, text, widget.rect, alignment=widget.style.get('alignment',0), 
+                                  wrap_lines=wrap_lines, truncate_overflow=widget.truncate_overflow)
+        self.wrap_lines[page_number][top] = max(wrap_widget,self.wrap_lines[page_number].get(top,0))
         # Calls the after_print event
         widget.do_after_print(generator=self)
 
@@ -243,7 +262,7 @@ class TextGenerator(ReportGenerator):
         # Calls the after_print event - UNCOMMENT IF IMPLEMENT THIS METHOD
         #graphic.do_after_print(generator=self)
 
-    def print_in_page_output(self, page_output, text, rect):
+    def print_in_page_output(self, page_output, text, rect, alignment=0, wrap_lines=0, truncate_overflow=False):
         """Changes the array page_output (a matrix with rows and cols equivalent
         to rows and cols in a matrix printer page) inserting the text value in
         the left/top coordinates."""
@@ -261,15 +280,48 @@ class TextGenerator(ReportGenerator):
         # Default height and width
         text_rect['height'] = text_rect['height'] or 1
         text_rect['width'] = text_rect['width'] or len(text)
-
-        if text_rect['height'] and text_rect['width']:
+        texts = []
+        
+        if text_rect['height'] and text_rect['width'] and self.wrap_on and (not truncate_overflow):
+            line = ''
+            for word in text.split(' '): 
+                while len(word) > text_rect['width']:
+                    texts.append(word[:text_rect['width']])
+                    word = word[text_rect['width']:]
+                line_tmp = line + (line and ' ' or '') + word
+                if len(line_tmp) <= text_rect['width']:
+                    line = line_tmp
+                elif line:
+                    texts.append(line)
+                    line = word
+            if line:
+                texts.append(line)
+            
+            for i, text in enumerate(texts):
+                if alignment == 2:
+                    text = text.rjust(text_rect['width'])[:text_rect['width']]
+                if alignment == 1:
+                    text = text.center(text_rect['width'])[:text_rect['width']]
+                else:
+                    text = text.ljust(text_rect['width'])[:text_rect['width']]
+                _temp = page_output[text_rect['top']+i+wrap_lines]
+                _temp = _temp[:text_rect['left']] + text + _temp[text_rect['right']:]
+                page_output[text_rect['top']+i+wrap_lines] = _temp[:self.get_page_columns_count()]
+                
+        elif text_rect['height'] and text_rect['width']:
             # Make a text with the exact width
-            text = text.ljust(text_rect['width'])[:text_rect['width']] # Align to left - TODO: should have center and right justifying also
+            if alignment == 2:
+                text = text.rjust(text_rect['width'])[:text_rect['width']]
+            if alignment == 1:
+                text = text.center(text_rect['width'])[:text_rect['width']]
+            else:
+                text = text.ljust(text_rect['width'])[:text_rect['width']]
 
             # Inserts the text into the page output buffer
             _temp = page_output[text_rect['top']]
             _temp = _temp[:text_rect['left']] + text + _temp[text_rect['right']:]
             page_output[text_rect['top']] = _temp[:self.get_page_columns_count()]
+        return texts and (len(texts) -1) or 0
 
     def add_escapes_report_start(self):
         """Adds the escape commands to the output variable"""

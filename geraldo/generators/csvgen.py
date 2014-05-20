@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 import datetime, csv
 from base import ReportGenerator
 
@@ -20,7 +21,7 @@ class CSVGenerator(ReportGenerator):
     """
     writer = None
     writer_function = csv.writer
-    first_row_with_column_names = False
+    first_row_with_column_names = True
 
     mimetype = 'text/csv'
 
@@ -84,12 +85,12 @@ class CSVGenerator(ReportGenerator):
         self.start_writer()
 
         # Make a sorted list of columns
-        columns = [el for el in self.report.band_detail.elements if isinstance(el, ObjectValue)]
+        columns = [el for el in self.report.band_detail.elements or (self.report.band_detail.child_bands and self.report.band_detail.child_bands[0].elements or [] ) if isinstance(el, ObjectValue)]
         columns.sort(lambda a,b: cmp(a.left, b.left) or cmp(a.width, b.width))
 
         # First row with column names
         if self.first_row_with_column_names:
-            cells = [(col.name or col.expression or col.attribute_name) for col in columns]
+            cells = [(col.attribute_name or getattr(col,'name',False) or col.expression) for col in columns]
             self.writer.writerow(cells)
 
         while self._current_object_index < len(objects):
